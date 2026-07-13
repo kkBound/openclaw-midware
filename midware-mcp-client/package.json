@@ -1,0 +1,32 @@
+{
+  "name": "midware-mcp-client",
+  "version": "1.0.0",
+  "description": "Midware MCP Client - OpenClaw插件，会话缓存与业务API代理",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "typebox": "^1.1.39"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2025.0.0"
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2025.0.0",
+      "minGatewayVersion": "2025.0.0"
+    }
+  }
+}

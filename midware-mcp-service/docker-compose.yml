@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  midware-mcp-service:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - API_PREFIX=https://api.midware.example.com
+      - APP_ID=${APP_ID}
+      - APP_SECRET=${APP_SECRET}
+      - APP_TOKEN_URL=https://auth.midware.example.com/oauth/token
+      - USER_SESSION_URL=https://auth.midware.example.com/api/v1/user/session
+      - APP_TOKEN_TTL_SECONDS=3600
+      - SERVER_PORT=3000
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

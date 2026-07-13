@@ -1,0 +1,41 @@
+{
+  "id": "midware-mcp-client",
+  "name": "Midware MCP Client",
+  "description": "Midware MCP 会话缓存与业务 API 代理插件，连接 midware-mcp-service 并为 Agent 提供 get_user_docs_and_session 和 call_business_api 工具",
+  "contracts": {
+    "tools": ["get_user_docs_and_session", "call_business_api"]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mcpServiceUrl": {
+        "type": "string",
+        "description": "midware-mcp-service 的 Streamable HTTP 端点 URL"
+      },
+      "sessionCacheTtl": {
+        "type": "integer",
+        "default": 1200,
+        "description": "用户会话缓存有效期（秒）"
+      },
+      "sessionRefreshBuffer": {
+        "type": "integer",
+        "default": 300,
+        "description": "提前刷新缓冲时间（秒）"
+      },
+      "maxCacheSize": {
+        "type": "integer",
+        "default": 1000,
+        "description": "最大缓存条目数"
+      },
+      "requestTimeout": {
+        "type": "integer",
+        "default": 30,
+        "description": "请求超时时间（秒）"
+      }
+    }
+  }
+}
