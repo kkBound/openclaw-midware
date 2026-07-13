@@ -9,6 +9,7 @@
  * - gateway_start: 连接 midware-mcp-service，启动缓存清理
  * - gateway_stop: 断开连接，停止缓存清理
  */
+import "dotenv/config";
 import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { McpServiceClient } from "./mcp-client.js";
@@ -174,17 +175,27 @@ export default definePluginEntry({
         }, { optional: false });
     },
 });
+function envString(key, defaultValue) {
+    return process.env[key] || defaultValue;
+}
+function envInt(key, defaultValue) {
+    const value = process.env[key];
+    if (!value)
+        return defaultValue;
+    const num = parseInt(value, 10);
+    return isNaN(num) ? defaultValue : num;
+}
 /**
- * 从插件配置中解析参数，应用默认值
+ * 从插件配置和环境变量中解析参数，优先级：插件配置 > 环境变量 > 默认值
  */
 function resolveConfig(pluginConfig) {
     const config = pluginConfig || {};
     return {
-        mcpServiceUrl: config.mcpServiceUrl || "http://localhost:3000/mcp",
-        sessionCacheTtl: config.sessionCacheTtl || 1200,
-        sessionRefreshBuffer: config.sessionRefreshBuffer || 300,
-        maxCacheSize: config.maxCacheSize || 1000,
-        requestTimeout: config.requestTimeout || 30,
+        mcpServiceUrl: config.mcpServiceUrl || envString("MCP_SERVICE_URL", "http://localhost:3000/mcp"),
+        sessionCacheTtl: config.sessionCacheTtl || envInt("SESSION_CACHE_TTL_SECONDS", 1200),
+        sessionRefreshBuffer: config.sessionRefreshBuffer || envInt("SESSION_REFRESH_BUFFER_SECONDS", 300),
+        maxCacheSize: config.maxCacheSize || envInt("MAX_CACHE_SIZE", 1000),
+        requestTimeout: config.requestTimeout || envInt("REQUEST_TIMEOUT", 30),
     };
 }
 //# sourceMappingURL=index.js.map

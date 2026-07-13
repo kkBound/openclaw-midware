@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "dotenv": "^17.4.2",
     "typebox": "^1.1.39"
   },
   "devDependencies": {
@@ -23,7 +24,9 @@
     "openclaw": ">=2025.0.0"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"],
+    "extensions": [
+      "./dist/index.js"
+    ],
     "compat": {
       "pluginApi": ">=2025.0.0",
       "minGatewayVersion": "2025.0.0"
