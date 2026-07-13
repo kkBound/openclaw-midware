@@ -14,12 +14,12 @@ export const TOOL_NAME = "get_user_docs_and_session";
 export const TOOL_DESCRIPTION = "根据用户临时Token获取该用户可调用的接口文档列表和临时会话Token(session_token)。每个用户首次会话时调用一次。";
 
 /** 输入参数 Schema */
-export const inputSchema = {
+export const inputSchema = z.object({
   user_token: z.string().describe("前端获取的用户临时Token，通常有效期较短（如15分钟）"),
-};
+});
 
 /** 输入参数类型 */
-export type InputParams = z.infer<z.ZodObject<typeof inputSchema>>;
+export type InputParams = z.infer<typeof inputSchema>;
 
 /**
  * 执行 Tool

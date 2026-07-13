@@ -1,0 +1,4 @@
+midware-mcp-client/node_modules/
+midware-mcp-service/node_modules/
+test/node_modules/
+midware-mcp-service/dist/

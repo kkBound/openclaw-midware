@@ -2,6 +2,7 @@
  * MCP Server 入口 - 启动 MCP Server + Express HTTP 承载 Streamable HTTP transport
  */
 
+import "dotenv/config";
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -20,20 +21,24 @@ function createMcpServer(): McpServer {
   });
 
   // 注册 Tool 1: get_user_docs_and_session
-  server.tool(
+  server.registerTool(
     userSessionTool.TOOL_NAME,
-    userSessionTool.TOOL_DESCRIPTION,
-    userSessionTool.inputSchema,
+    {
+      description: userSessionTool.TOOL_DESCRIPTION,
+      inputSchema: userSessionTool.inputSchema,
+    },
     async (params) => {
       return userSessionTool.execute(params);
     }
   );
 
   // 注册 Tool 2: call_business_api
-  server.tool(
+  server.registerTool(
     businessApiTool.TOOL_NAME,
-    businessApiTool.TOOL_DESCRIPTION,
-    businessApiTool.inputSchema,
+    {
+      description: businessApiTool.TOOL_DESCRIPTION,
+      inputSchema: businessApiTool.inputSchema,
+    },
     async (params) => {
       return businessApiTool.execute(params);
     }
@@ -72,7 +77,7 @@ async function main(): Promise<void> {
       const server = createMcpServer();
       await server.connect(transport);
 
-      await transport.handleIncomingMessage(req.body, res, req.headers);
+      await transport.handleRequest(req, res, req.body);
 
       const duration = Date.now() - startTime;
       logger.debug("mcp-service", "mcp_request", "handled", duration);

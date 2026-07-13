@@ -53,28 +53,30 @@ function assert(condition: boolean, message: string): void {
 
 // ===== Mock MCP Service =====
 
+let callCount = 0;
+
 function createMockMcpServer(): McpServer {
   const server = new McpServer({
     name: "mock-midware-mcp-service",
     version: "1.0.0-test",
   });
 
-  let callCount = 0;
-
   // Tool 1: get_user_docs_and_session
-  server.tool(
+  server.registerTool(
     "get_user_docs_and_session",
-    "根据用户临时Token获取接口文档列表和会话Token",
     {
-      user_token: z.string().describe("用户临时Token"),
+      description: "根据用户临时Token获取接口文档列表和会话Token",
+      inputSchema: z.object({
+        user_token: z.string().describe("用户临时Token"),
+      }),
     },
     async (params) => {
       callCount++;
       console.log(`  [Mock Service] 收到 get_user_docs_and_session 调用 #${callCount}`);
       console.log(`  [Mock Service] user_token: ${params.user_token.substring(0, 10)}...`);
 
-      // 第3次调用返回新的 session_token（模拟刷新）
-      const sessionToken = callCount >= 3 ? "sess_mock_REFRESHED_999" : MOCK_SESSION_TOKEN;
+      // 第2次调用返回新的 session_token（模拟刷新）
+      const sessionToken = callCount >= 2 ? "sess_mock_REFRESHED_999" : MOCK_SESSION_TOKEN;
 
       const result = {
         api_docs: [
@@ -123,15 +125,17 @@ function createMockMcpServer(): McpServer {
   );
 
   // Tool 2: call_business_api
-  server.tool(
+  server.registerTool(
     "call_business_api",
-    "调用业务接口",
     {
-      session_token: z.string(),
-      api_path: z.string(),
-      method: z.enum(["GET", "POST", "PUT", "DELETE"]),
-      params: z.record(z.unknown()).optional(),
-      headers: z.record(z.string()).optional(),
+      description: "调用业务接口",
+      inputSchema: z.object({
+        session_token: z.string(),
+        api_path: z.string(),
+        method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+        params: z.record(z.unknown()).optional(),
+        headers: z.record(z.string()).optional(),
+      }),
     },
     async (params) => {
       console.log(`  [Mock Service] 收到 call_business_api 调用`);
@@ -184,7 +188,7 @@ async function startMockService(): Promise<ReturnType<express.Application["liste
         });
         const server = createMockMcpServer();
         await server.connect(transport);
-        await transport.handleIncomingMessage(req.body, res, req.headers);
+        await transport.handleRequest(req, res, req.body);
       } catch (error) {
         console.error("  [Mock Service] 错误:", error);
         res.status(500).json({ error: "mock_service_error" });

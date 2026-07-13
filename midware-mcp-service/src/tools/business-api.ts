@@ -14,22 +14,16 @@ export const TOOL_NAME = "call_business_api";
 export const TOOL_DESCRIPTION = "根据session_token调用具体的业务接口，获取实际数据。Agent根据用户问题和接口文档选择调用。";
 
 /** 输入参数 Schema */
-export const inputSchema = {
+export const inputSchema = z.object({
   session_token: z.string().describe("通过get_user_docs_and_session获取的临时会话Token"),
   api_path: z.string().describe("接口路径（不含前缀），如 /api/v1/orders"),
   method: z.enum(["GET", "POST", "PUT", "DELETE"]).describe("HTTP请求方法"),
   params: z.record(z.unknown()).optional().describe("接口参数（GET时为query参数，POST/PUT时为body参数）"),
   headers: z.record(z.string()).optional().describe("额外请求头（可选）"),
-};
+});
 
 /** 输入参数类型 */
-export type InputParams = {
-  session_token: string;
-  api_path: string;
-  method: "GET" | "POST" | "PUT" | "DELETE";
-  params?: Record<string, unknown>;
-  headers?: Record<string, string>;
-};
+export type InputParams = z.infer<typeof inputSchema>;
 
 /**
  * 执行 Tool
