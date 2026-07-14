@@ -41,7 +41,8 @@ export async function fetchUserSession(userToken: string): Promise<UserSessionRe
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${appToken}`,
+        access_token: appToken,
+        appId: config.appId,
         "X-User-Token": userToken,
       },
       body: JSON.stringify({}),
@@ -93,18 +94,19 @@ export async function callBackendApi(params: CallBusinessApiParams): Promise<{ s
   // 获取app_token
   const appToken = await getAppToken();
 
-  const baseHeaders: Record<string, string> = {
-    Authorization: `Bearer ${appToken}`,
-    "X-Session-Token": session_token,
-    ...(extraHeaders || {}),
-  };
-
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES_5XX; attempt++) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+
+      const baseHeaders: Record<string, string> = {
+        access_token: appToken,
+        appId: config.appId,
+        "X-Session-Token": session_token,
+        ...(extraHeaders || {}),
+      };
 
       let response: Response;
 

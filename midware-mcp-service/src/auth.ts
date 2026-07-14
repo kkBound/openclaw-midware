@@ -94,9 +94,9 @@ async function fetchAppTokenFromBackend(): Promise<AppTokenCache> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          AppId: config.appId,
-          Sign: sign,
-          Nonce: nonce,
+          appId: config.appId,
+          sign: sign,
+          nonce: nonce,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
