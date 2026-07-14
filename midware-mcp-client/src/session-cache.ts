@@ -38,7 +38,6 @@ export class SessionCacheManager {
       this.cleanupExpired();
     }, CLEANUP_INTERVAL_MS);
 
-    // 不阻止进程退出
     if (this.cleanupTimer.unref) {
       this.cleanupTimer.unref();
     }
@@ -61,13 +60,10 @@ export class SessionCacheManager {
 
   /**
    * 获取用户会话（带缓存）
-   * 1. 计算 cache_key = SHA256(user_token)
-   * 2. 查询内存缓存
-   *    - 缓存命中且未过期 → 直接返回
-   *    - 缓存命中但即将过期 → 异步刷新，本次返回旧数据
-   *    - 缓存未命中 → 调用 mcp-service 获取
+   * user_token 仍作为缓存 key 的来源
+   * 向 service 传递时使用 agent_token 和 job_number
    */
-  async getUserSession(userToken: string): Promise<SessionCache> {
+  async getUserSession(userToken: string, agentToken: string, jobNumber: string): Promise<SessionCache> {
     const cacheKey = this.hashUserToken(userToken);
     const now = Date.now();
     const refreshBufferMs = this.config.sessionRefreshBuffer * 1000;
@@ -87,11 +83,10 @@ export class SessionCacheManager {
       if (now >= cached.expires_at) {
         logger.info("mcp-client", "sessionCache", "cache_expired", undefined, `key=${cacheKey.substring(0, 16)}... expired_since_ms=${now - cached.expires_at} session_token=${maskToken(cached.session_token)}`);
         this.cache.delete(cacheKey);
-        // 继续到下面的同步获取
       } else if (now >= refreshThresholdMs) {
         // 即将过期 → 异步刷新，本次返回旧数据
         logger.info("mcp-client", "sessionCache", "cache_near_expiry", undefined, `key=${cacheKey.substring(0, 16)}... remaining_ms=${remainingMs} refresh_buffer_ms=${refreshBufferMs} triggering_async_refresh session_token=${maskToken(cached.session_token)}`);
-        this.refreshAsync(userToken, cacheKey);
+        this.refreshAsync(userToken, agentToken, jobNumber, cacheKey);
         logger.debug("mcp-client", "sessionCache", "returning_stale_cache", undefined, `key=${cacheKey.substring(0, 16)}... session_token=${maskToken(cached.session_token)}`);
         return cached;
       } else {
@@ -108,7 +103,7 @@ export class SessionCacheManager {
 
     // 2. 缓存未命中 → 同步调用 mcp-service
     logger.info("mcp-client", "sessionCache", "fetching_from_service", undefined, `key=${cacheKey.substring(0, 16)}...`);
-    const session = await this.fetchFromService(userToken, cacheKey);
+    const session = await this.fetchFromService(agentToken, jobNumber, cacheKey);
     this.put(cacheKey, session);
 
     logger.info("mcp-client", "sessionCache", "getUserSession_complete", undefined, `key=${cacheKey.substring(0, 16)}... session_token=${maskToken(session.session_token)} cache_size=${this.cache.size}`);
@@ -194,7 +189,7 @@ export class SessionCacheManager {
   // ===== 私有方法 =====
 
   /**
-   * 计算 user_token 的 SHA-256 哈希
+   * 计算 user_token 的 SHA-256 哈希（仍用 user_token 作为缓存 key）
    */
   private hashUserToken(userToken: string): string {
     const hash = createHash("sha256").update(userToken).digest("hex");
@@ -204,13 +199,14 @@ export class SessionCacheManager {
 
   /**
    * 从 mcp-service 获取用户会话数据
+   * 向 service 传递 agent_token 和 job_number
    */
-  private async fetchFromService(userToken: string, cacheKey: string): Promise<SessionCache> {
+  private async fetchFromService(agentToken: string, jobNumber: string, cacheKey: string): Promise<SessionCache> {
     const startTime = Date.now();
 
-    logger.info("mcp-client", "sessionCache", "fetchFromService_start", undefined, `key=${cacheKey.substring(0, 16)}... user_token=${maskToken(userToken)}`);
+    logger.info("mcp-client", "sessionCache", "fetchFromService_start", undefined, `key=${cacheKey.substring(0, 16)}... agent_token=${maskToken(agentToken)} job_number=${jobNumber}`);
 
-    const result = await this.mcpClient.callGetUserDocsAndSession(userToken);
+    const result = await this.mcpClient.callGetUserDocsAndSession(agentToken, jobNumber);
 
     const ttl = result.expires_in || this.config.sessionCacheTtl;
     const now = Date.now();
@@ -219,10 +215,12 @@ export class SessionCacheManager {
       session_token: result.session_token,
       expires_at: now + ttl * 1000,
       user_token_hash: cacheKey,
+      accountGbId: result.accountGbId,
+      merchantId: result.merchantId,
     };
 
     const duration = Date.now() - startTime;
-    logger.info("mcp-client", "sessionCache", "fetchFromService_success", duration, `key=${cacheKey.substring(0, 16)}... session_token=${maskToken(session.session_token)} ttl=${ttl}s expires_at=${new Date(session.expires_at).toISOString()} api_docs_count=${session.api_docs.length}`);
+    logger.info("mcp-client", "sessionCache", "fetchFromService_success", duration, `key=${cacheKey.substring(0, 16)}... session_token=${maskToken(session.session_token)} ttl=${ttl}s expires_at=${new Date(session.expires_at).toISOString()} api_docs_count=${session.api_docs.length} accountGbId=${session.accountGbId} merchantId=${session.merchantId}`);
 
     return session;
   }
@@ -230,8 +228,7 @@ export class SessionCacheManager {
   /**
    * 异步刷新缓存（不阻塞当前请求）
    */
-  private async refreshAsync(userToken: string, cacheKey: string): Promise<void> {
-    // 防止重复刷新
+  private async refreshAsync(userToken: string, agentToken: string, jobNumber: string, cacheKey: string): Promise<void> {
     if (this.refreshing.has(cacheKey)) {
       logger.debug("mcp-client", "sessionCache", "refreshAsync_skip_duplicate", undefined, `key=${cacheKey.substring(0, 16)}... already_refreshing`);
       return;
@@ -241,7 +238,7 @@ export class SessionCacheManager {
     logger.info("mcp-client", "sessionCache", "refreshAsync_start", undefined, `key=${cacheKey.substring(0, 16)}... refreshing_count=${this.refreshing.size}`);
 
     try {
-      const session = await this.fetchFromService(userToken, cacheKey);
+      const session = await this.fetchFromService(agentToken, jobNumber, cacheKey);
       this.put(cacheKey, session);
 
       logger.info("mcp-client", "sessionCache", "refreshAsync_success", undefined, `key=${cacheKey.substring(0, 16)}... new_session_token=${maskToken(session.session_token)} new_expires_at=${new Date(session.expires_at).toISOString()}`);
@@ -261,7 +258,6 @@ export class SessionCacheManager {
   private put(key: string, session: SessionCache): void {
     logger.debug("mcp-client", "sessionCache", "put_start", undefined, `key=${key.substring(0, 16)}... cache_size=${this.cache.size} max_size=${this.config.maxCacheSize} session_token=${maskToken(session.session_token)}`);
 
-    // LRU淘汰：超过容量时删除最久未使用的
     if (this.cache.size >= this.config.maxCacheSize) {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
@@ -270,7 +266,6 @@ export class SessionCacheManager {
       }
     }
 
-    // 如果key已存在，先删除再设置（更新位置）
     if (this.cache.has(key)) {
       logger.debug("mcp-client", "sessionCache", "put_overwrite", undefined, `key=${key.substring(0, 16)}... old_expires_at existed`);
       this.cache.delete(key);

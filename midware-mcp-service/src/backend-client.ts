@@ -16,15 +16,17 @@ const MAX_RETRIES_5XX = 2;
 
 /**
  * 调用后端接口获取用户文档和会话Token
+ * @param agentToken Agent Token
+ * @param jobNumber 工号（用于请求头 job-number）
  */
-export async function fetchUserSession(userToken: string): Promise<UserSessionResponse> {
+export async function fetchUserSession(agentToken: string, jobNumber: string): Promise<UserSessionResponse> {
   const config = getConfig();
 
   // Mock 模式
   if (config.mockMode) {
-    logger.info("mcp-service", "fetchUserSession(mock)", "start", undefined, `user_token=${maskToken(userToken)}`);
-    const data = mockFetchUserSession(userToken);
-    logger.info("mcp-service", "fetchUserSession(mock)", "success", 0, `session_token=${maskToken(data.session_token)}`);
+    logger.info("mcp-service", "fetchUserSession(mock)", "start", undefined, `agent_token=${maskToken(agentToken)} job_number=${jobNumber}`);
+    const data = mockFetchUserSession(agentToken, jobNumber);
+    logger.info("mcp-service", "fetchUserSession(mock)", "success", 0, `session_token=${maskToken(data.session_token)} accountGbId=${data.accountGbId} merchantId=${data.merchantId}`);
     return data;
   }
 
@@ -43,7 +45,8 @@ export async function fetchUserSession(userToken: string): Promise<UserSessionRe
         "Content-Type": "application/json",
         access_token: appToken,
         appId: config.appId,
-        "X-User-Token": userToken,
+        "job-number": jobNumber,
+        "X-Agent-Token": agentToken,
       },
       body: JSON.stringify({}),
       signal: controller.signal,
@@ -59,7 +62,7 @@ export async function fetchUserSession(userToken: string): Promise<UserSessionRe
     const data = (await response.json()) as UserSessionResponse;
 
     const duration = Date.now() - startTime;
-    logger.info("mcp-service", "fetchUserSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(data.session_token)}`);
+    logger.info("mcp-service", "fetchUserSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(data.session_token)} accountGbId=${data.accountGbId} merchantId=${data.merchantId}`);
 
     return data;
   } catch (error) {

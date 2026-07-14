@@ -1,6 +1,6 @@
 /**
  * MCP Tool 1: get_user_docs_and_session
- * 根据用户临时Token获取接口文档列表和临时会话Token
+ * 根据Agent Token获取接口文档列表和临时会话Token
  */
 
 import { z } from "zod";
@@ -11,11 +11,12 @@ import { logger, generateTraceId, maskToken } from "../logger.js";
 export const TOOL_NAME = "get_user_docs_and_session";
 
 /** Tool 描述 */
-export const TOOL_DESCRIPTION = "根据用户临时Token获取该用户可调用的接口文档列表和临时会话Token(session_token)。每个用户首次会话时调用一次。";
+export const TOOL_DESCRIPTION = "根据Agent Token获取该用户可调用的接口文档列表和临时会话Token(session_token)。每个用户首次会话时调用一次。";
 
 /** 输入参数 Schema */
 export const inputSchema = z.object({
-  user_token: z.string().describe("前端获取的用户临时Token，通常有效期较短（如15分钟）"),
+  agent_token: z.string().describe("Agent Token，用于获取用户接口文档和会话Token"),
+  job_number: z.string().describe("工号，用于后端请求头 job-number"),
 });
 
 /** 输入参数类型 */
@@ -29,13 +30,13 @@ export async function execute(params: InputParams): Promise<{ content: Array<{ t
   const startTime = Date.now();
 
   try {
-    logger.info("mcp-service", "tool:get_user_docs_and_session", "start", undefined, `trace_id=${traceId} user_token=${maskToken(params.user_token)}`);
+    logger.info("mcp-service", "tool:get_user_docs_and_session", "start", undefined, `trace_id=${traceId} agent_token=${maskToken(params.agent_token)} job_number=${params.job_number}`);
 
     // 调用后端获取用户会话
-    const session = await fetchUserSession(params.user_token);
+    const session = await fetchUserSession(params.agent_token, params.job_number);
 
     const duration = Date.now() - startTime;
-    logger.info("mcp-service", "tool:get_user_docs_and_session", "success", duration, `trace_id=${traceId} api_docs_count=${session.api_docs.length}`);
+    logger.info("mcp-service", "tool:get_user_docs_and_session", "success", duration, `trace_id=${traceId} api_docs_count=${session.api_docs.length} accountGbId=${session.accountGbId} merchantId=${session.merchantId}`);
 
     return {
       content: [

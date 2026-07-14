@@ -19,6 +19,8 @@ export interface UserSessionResult {
   }>;
   session_token: string;
   expires_in: number;
+  accountGbId: string;
+  merchantId: string;
 }
 
 export class McpServiceClient {
@@ -72,8 +74,9 @@ export class McpServiceClient {
 
   /**
    * 调用 get_user_docs_and_session
+   * 向 service 传递 agent_token 和 job_number
    */
-  async callGetUserDocsAndSession(userToken: string): Promise<UserSessionResult> {
+  async callGetUserDocsAndSession(agentToken: string, jobNumber: string): Promise<UserSessionResult> {
     const traceId = generateTraceId();
     const startTime = Date.now();
 
@@ -82,18 +85,18 @@ export class McpServiceClient {
     }
 
     try {
-      logger.info("mcp-client", "callGetUserDocsAndSession", "start", undefined, `trace_id=${traceId} user_token=${maskToken(userToken)}`);
+      logger.info("mcp-client", "callGetUserDocsAndSession", "start", undefined, `trace_id=${traceId} agent_token=${maskToken(agentToken)} job_number=${jobNumber}`);
 
       const result = await this.client.callTool({
         name: "get_user_docs_and_session",
-        arguments: { user_token: userToken },
+        arguments: { agent_token: agentToken, job_number: jobNumber },
       });
 
       const text = this.extractText(result);
       const session = JSON.parse(text) as UserSessionResult;
 
       const duration = Date.now() - startTime;
-      logger.info("mcp-client", "callGetUserDocsAndSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(session.session_token)}`);
+      logger.info("mcp-client", "callGetUserDocsAndSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(session.session_token)} accountGbId=${session.accountGbId} merchantId=${session.merchantId}`);
 
       return session;
     } catch (error) {

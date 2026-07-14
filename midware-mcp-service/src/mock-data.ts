@@ -23,7 +23,7 @@ export function mockGetAppToken(): { token: string; expiresAt: number } {
 /**
  * 模拟获取用户会话
  */
-export function mockFetchUserSession(userToken: string): UserSessionResponse {
+export function mockFetchUserSession(agentToken: string, jobNumber: string): UserSessionResponse {
   sessionCallCount++;
   const sessionToken = sessionCallCount >= 2 ? `sess_mock_refreshed_${sessionCallCount}` : "sess_mock_xyz789";
 
@@ -82,10 +82,12 @@ export function mockFetchUserSession(userToken: string): UserSessionResponse {
     ],
     session_token: sessionToken,
     expires_in: 1200,
+    accountGbId: "acc_gb_001",
+    merchantId: "mch_001",
   };
 
   // eslint-disable-next-line no-console
-  console.log(`${new Date().toISOString()} INFO  mcp-service mockFetchUserSession success user_token=${userToken.substring(0, 6)}*** session_token=${sessionToken.substring(0, 15)}... call_count=${sessionCallCount}`);
+  console.log(`${new Date().toISOString()} INFO  mcp-service mockFetchUserSession success agent_token=${agentToken.substring(0, 6)}*** job_number=${jobNumber} session_token=${sessionToken.substring(0, 15)}... accountGbId=${result.accountGbId} merchantId=${result.merchantId} call_count=${sessionCallCount}`);
 
   return result;
 }

@@ -19,6 +19,8 @@ import { createHash } from "node:crypto";
 
 const SERVICE_URL = process.env.SERVICE_URL || "http://localhost:9003/mcp";
 const MOCK_USER_TOKEN = "user_tok_test_001";
+const MOCK_AGENT_TOKEN = "agent_tok_test_001";
+const MOCK_JOB_NUMBER = "EMP001";
 
 // ===== 测试工具函数 =====
 
@@ -26,7 +28,7 @@ let stepCount = 0;
 function step(name: string): void {
   stepCount++;
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`  步骤 ${stepCount}: ${name}`);
+  console.log(`  Step ${stepCount}: ${name}`);
   console.log(`${"=".repeat(60)}\n`);
 }
 
@@ -103,6 +105,8 @@ interface CacheEntry {
   session_token: string;
   expires_at: number;
   user_token_hash: string;
+  accountGbId: string;
+  merchantId: string;
 }
 
 class SimpleSessionCache {
@@ -114,7 +118,12 @@ class SimpleSessionCache {
     this.refreshBufferMs = refreshBufferSeconds * 1000;
   }
 
-  async getUserSession(userToken: string, client: SimpleMcpClient): Promise<CacheEntry> {
+  async getUserSession(
+    userToken: string,
+    agentToken: string,
+    jobNumber: string,
+    client: SimpleMcpClient
+  ): Promise<CacheEntry> {
     const cacheKey = createHash("sha256").update(userToken).digest("hex");
     const now = Date.now();
 
@@ -127,7 +136,7 @@ class SimpleSessionCache {
         this.cache.delete(cacheKey);
       } else if (now >= cached.expires_at - this.refreshBufferMs) {
         testLog("sessionCache", "getUserSession", "cache_near_expiry", `remaining_ms=${remainingMs} triggering_refresh`);
-        this.refreshAsync(userToken, cacheKey, client);
+        this.refreshAsync(agentToken, jobNumber, cacheKey, client);
         return cached;
       } else {
         testLog("sessionCache", "getUserSession", "cache_hit", `remaining_ms=${remainingMs}`);
@@ -139,7 +148,10 @@ class SimpleSessionCache {
 
     this.fetchCount++;
     testLog("sessionCache", "getUserSession", `fetching #${this.fetchCount}`, "");
-    const text = await client.callTool("get_user_docs_and_session", { user_token: userToken });
+    const text = await client.callTool("get_user_docs_and_session", {
+      agent_token: agentToken,
+      job_number: jobNumber,
+    });
     const result = JSON.parse(text);
 
     const entry: CacheEntry = {
@@ -147,6 +159,8 @@ class SimpleSessionCache {
       session_token: result.session_token,
       expires_at: Date.now() + result.expires_in * 1000,
       user_token_hash: cacheKey,
+      accountGbId: result.accountGbId,
+      merchantId: result.merchantId,
     };
 
     this.cache.set(cacheKey, entry);
@@ -155,17 +169,27 @@ class SimpleSessionCache {
     return entry;
   }
 
-  private async refreshAsync(userToken: string, cacheKey: string, client: SimpleMcpClient): Promise<void> {
+  private async refreshAsync(
+    agentToken: string,
+    jobNumber: string,
+    cacheKey: string,
+    client: SimpleMcpClient
+  ): Promise<void> {
     this.fetchCount++;
     testLog("sessionCache", "refreshAsync", `start #${this.fetchCount}`, "");
     try {
-      const text = await client.callTool("get_user_docs_and_session", { user_token: userToken });
+      const text = await client.callTool("get_user_docs_and_session", {
+        agent_token: agentToken,
+        job_number: jobNumber,
+      });
       const result = JSON.parse(text);
       const entry: CacheEntry = {
         api_docs: result.api_docs,
         session_token: result.session_token,
         expires_at: Date.now() + result.expires_in * 1000,
         user_token_hash: cacheKey,
+        accountGbId: result.accountGbId,
+        merchantId: result.merchantId,
       };
       this.cache.set(cacheKey, entry);
       testLog("sessionCache", "refreshAsync", "success", `new_session_token=${entry.session_token.substring(0, 15)}...`);
@@ -183,10 +207,10 @@ class SimpleSessionCache {
 
 async function main(): Promise<void> {
   console.log("\n");
-  console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║     Midware MCP 本地集成测试                              ║");
-  console.log("║     mcp-client ↔ mcp-service (MOCK_MODE) 连接验证        ║");
-  console.log("╚══════════════════════════════════════════════════════════╝");
+  console.log("============================================================");
+  console.log("     Midware MCP 本地集成测试");
+  console.log("     mcp-client <-> mcp-service (MOCK_MODE) 连接验证");
+  console.log("============================================================");
 
   console.log(`\n  Service URL: ${SERVICE_URL}`);
   console.log(`  请确保 midware-mcp-service 已启动（MOCK_MODE=true）\n`);
@@ -194,7 +218,7 @@ async function main(): Promise<void> {
   let client: SimpleMcpClient | null = null;
 
   try {
-    // ===== 步骤1: 健康检查 =====
+    // ===== Step 1: 健康检查 =====
     step("健康检查 midware-mcp-service");
     const healthResp = await fetch(`${SERVICE_URL.replace("/mcp", "/health")}`);
     if (!healthResp.ok) {
@@ -204,7 +228,7 @@ async function main(): Promise<void> {
     assert(health.status === "ok", "Service 健康检查通过");
     console.log(`  Service: ${health.service} v${health.version}`);
 
-    // ===== 步骤2: 连接 service =====
+    // ===== Step 2: 连接 service =====
     step("MCP Client 连接 mcp-service");
     client = new SimpleMcpClient();
     await client.connect(SERVICE_URL);
@@ -217,20 +241,25 @@ async function main(): Promise<void> {
     assert(toolNames.includes("get_user_docs_and_session"), "Tool get_user_docs_and_session 已注册");
     assert(toolNames.includes("call_business_api"), "Tool call_business_api 已注册");
 
-    // ===== 步骤3: 调用 get_user_docs_and_session =====
-    step("调用 get_user_docs_and_session（获取接口文档和会话Token）");
+    // ===== Step 3: 调用 get_user_docs_and_session =====
+    step("调用 get_user_docs_and_session（agent_token + job_number）");
     const text1 = await client.callTool("get_user_docs_and_session", {
-      user_token: MOCK_USER_TOKEN,
+      agent_token: MOCK_AGENT_TOKEN,
+      job_number: MOCK_JOB_NUMBER,
     });
     const session1 = JSON.parse(text1);
     assert(session1.api_docs.length === 3, `返回3个API文档（实际: ${session1.api_docs.length}）`);
     assert(session1.session_token === "sess_mock_xyz789", `首次 session_token = sess_mock_xyz789`);
     assert(session1.expires_in > 0, `expires_in > 0`);
+    assert(session1.accountGbId === "acc_gb_001", `accountGbId = acc_gb_001`);
+    assert(session1.merchantId === "mch_001", `merchantId = mch_001`);
     console.log(`  session_token: ${session1.session_token}`);
     console.log(`  expires_in: ${session1.expires_in}s`);
+    console.log(`  accountGbId: ${session1.accountGbId}`);
+    console.log(`  merchantId: ${session1.merchantId}`);
     console.log(`  api_docs: ${session1.api_docs.map((d: { name: string }) => d.name).join(", ")}`);
 
-    // ===== 步骤4: 调用 call_business_api（GET 订单列表） =====
+    // ===== Step 4: 调用 call_business_api（GET 订单列表） =====
     step("调用 call_business_api（GET /api/v1/orders）");
     const bizText1 = await client.callTool("call_business_api", {
       session_token: session1.session_token,
@@ -241,10 +270,10 @@ async function main(): Promise<void> {
     const biz1 = JSON.parse(bizText1);
     assert(biz1.total === 2, `返回2条订单（实际: ${biz1.total}）`);
     assert(biz1.items.length === 2, `订单列表长度=2`);
-    console.log(`  订单1: ${biz1.items[0].id} ${biz1.items[0].status} ¥${biz1.items[0].amount}`);
-    console.log(`  订单2: ${biz1.items[1].id} ${biz1.items[1].status} ¥${biz1.items[1].amount}`);
+    console.log(`  订单1: ${biz1.items[0].id} ${biz1.items[0].status} ${biz1.items[0].amount}`);
+    console.log(`  订单2: ${biz1.items[1].id} ${biz1.items[1].status} ${biz1.items[1].amount}`);
 
-    // ===== 步骤5: 调用 call_business_api（GET 订单详情） =====
+    // ===== Step 5: 调用 call_business_api（GET 订单详情） =====
     step("调用 call_business_api（GET /api/v1/orders/ORD-001）");
     const bizText2 = await client.callTool("call_business_api", {
       session_token: session1.session_token,
@@ -256,7 +285,7 @@ async function main(): Promise<void> {
     assert(biz2.status === "completed", `订单状态 = completed`);
     console.log(`  订单详情: id=${biz2.id} status=${biz2.status} amount=${biz2.amount}`);
 
-    // ===== 步骤6: 调用 call_business_api（POST 创建订单） =====
+    // ===== Step 6: 调用 call_business_api（POST 创建订单） =====
     step("调用 call_business_api（POST /api/v1/orders）");
     const bizText3 = await client.callTool("call_business_api", {
       session_token: session1.session_token,
@@ -269,25 +298,27 @@ async function main(): Promise<void> {
     assert(biz3.status === "created", `订单状态 = created`);
     console.log(`  创建订单: order_id=${biz3.order_id} status=${biz3.status}`);
 
-    // ===== 步骤7: 测试缓存逻辑（使用简化缓存） =====
-    step("测试 session 缓存逻辑");
+    // ===== Step 7: 测试缓存逻辑（使用简化缓存） =====
+    step("测试 session 缓存逻辑（user_token作缓存key，agent_token+job_number传service）");
     const cache = new SimpleSessionCache(1);
 
     // 首次获取 - cache miss
-    const cs1 = await cache.getUserSession(MOCK_USER_TOKEN, client);
+    const cs1 = await cache.getUserSession(MOCK_USER_TOKEN, MOCK_AGENT_TOKEN, MOCK_JOB_NUMBER, client);
     assert(cache.getStats().fetchCount === 1, "首次获取 fetchCount=1");
+    assert(cs1.accountGbId === "acc_gb_001", "缓存条目包含 accountGbId");
+    assert(cs1.merchantId === "mch_001", "缓存条目包含 merchantId");
 
     // 第二次获取 - cache hit
-    const cs2 = await cache.getUserSession(MOCK_USER_TOKEN, client);
+    const cs2 = await cache.getUserSession(MOCK_USER_TOKEN, MOCK_AGENT_TOKEN, MOCK_JOB_NUMBER, client);
     assert(cs2.session_token === cs1.session_token, "缓存命中，返回相同 session_token");
     assert(cache.getStats().fetchCount === 1, "fetchCount 仍为1（缓存命中）");
     console.log(`  缓存统计: ${JSON.stringify(cache.getStats())}`);
 
     // ===== 测试完成 =====
     console.log("\n");
-    console.log("╔══════════════════════════════════════════════════════════╗");
-    console.log("║                     所有测试通过!                          ║");
-    console.log("╚══════════════════════════════════════════════════════════╝\n");
+    console.log("============================================================");
+    console.log("                     所有测试通过!");
+    console.log("============================================================\n");
 
   } finally {
     if (client) {

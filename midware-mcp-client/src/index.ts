@@ -73,30 +73,36 @@ export default definePluginEntry({
         name: "get_user_docs_and_session",
         label: "Get User Docs And Session",
         description:
-          "根据用户临时Token获取该用户可调用的接口文档列表和临时会话Token(session_token)。每个用户首次会话时调用一次。返回 api_docs（接口文档列表）和 session_token（用于后续业务接口调用）。",
+          "根据用户Token获取该用户可调用的接口文档列表和临时会话Token(session_token)。每个用户首次会话时调用一次。返回 api_docs（接口文档列表）、session_token（用于后续业务接口调用）、accountGbId 和 merchantId。",
         parameters: Type.Object({
           user_token: Type.String({
-            description: "前端获取的用户临时Token，通常有效期较短（如15分钟）",
+            description: "前端获取的用户临时Token，用于缓存key",
+          }),
+          agent_token: Type.String({
+            description: "Agent Token，传递给后端用于获取用户接口文档和会话Token",
+          }),
+          job_number: Type.String({
+            description: "工号，传递给后端请求头 job-number",
           }),
         }),
         async execute(_toolCallId: string, params: unknown) {
           const traceId = generateTraceId();
           const startTime = Date.now();
-          const p = params as { user_token: string };
+          const p = params as { user_token: string; agent_token: string; job_number: string };
 
           try {
             if (!sessionCache) {
               throw new Error("会话缓存管理器未初始化，请等待插件启动完成");
             }
 
-            logger.info("mcp-client", "tool:get_user_docs_and_session", "start", undefined, `trace_id=${traceId} user_token=${maskToken(p.user_token)}`);
+            logger.info("mcp-client", "tool:get_user_docs_and_session", "start", undefined, `trace_id=${traceId} user_token=${maskToken(p.user_token)} agent_token=${maskToken(p.agent_token)} job_number=${p.job_number}`);
 
             // 带缓存的获取用户会话
-            const session = await sessionCache.getUserSession(p.user_token);
+            const session = await sessionCache.getUserSession(p.user_token, p.agent_token, p.job_number);
 
             const duration = Date.now() - startTime;
             const cacheStats = sessionCache.getStats();
-            logger.info("mcp-client", "tool:get_user_docs_and_session", "success", duration, `trace_id=${traceId} api_docs_count=${session.api_docs.length} cache_size=${cacheStats.size}`);
+            logger.info("mcp-client", "tool:get_user_docs_and_session", "success", duration, `trace_id=${traceId} api_docs_count=${session.api_docs.length} cache_size=${cacheStats.size} accountGbId=${session.accountGbId} merchantId=${session.merchantId}`);
 
             return {
               content: [
@@ -106,6 +112,8 @@ export default definePluginEntry({
                     api_docs: session.api_docs,
                     session_token: session.session_token,
                     expires_in: Math.floor((session.expires_at - Date.now()) / 1000),
+                    accountGbId: session.accountGbId,
+                    merchantId: session.merchantId,
                   }),
                 },
               ],
