@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { getConfig } from "./config.js";
 import { logger, maskToken, generateTraceId } from "./logger.js";
 import { AppTokenCache, AppTokenFetchError, AppAuthError } from "./types.js";
+import { mockGetAppToken } from "./mock-data.js";
 
 /** 内存缓存 */
 let appTokenCache: AppTokenCache | null = null;
@@ -176,6 +177,20 @@ async function fetchAppTokenFromBackend(): Promise<AppTokenCache> {
  * - 缓存不存在/已过期 → 同步获取新Token
  */
 export async function getAppToken(): Promise<string> {
+  const config = getConfig();
+
+  // Mock 模式
+  if (config.mockMode) {
+    if (appTokenCache && Date.now() < appTokenCache.expiresAt - REFRESH_BUFFER_MS) {
+      logger.debug("mcp-service", "getAppToken(mock)", "cache_hit", undefined, `token=${maskToken(appTokenCache.token)}`);
+      return appTokenCache.token;
+    }
+    const mock = mockGetAppToken();
+    appTokenCache = { token: mock.token, expiresAt: mock.expiresAt };
+    logger.info("mcp-service", "getAppToken(mock)", "success", 0, `token=${maskToken(appTokenCache.token)} expires_at=${new Date(appTokenCache.expiresAt).toISOString()}`);
+    return appTokenCache.token;
+  }
+
   const traceId = generateTraceId();
   const startTime = Date.now();
 

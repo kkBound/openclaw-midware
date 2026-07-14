@@ -6,6 +6,7 @@ import { getConfig } from "./config.js";
 import { logger, maskToken, generateTraceId } from "./logger.js";
 import { getAppToken } from "./auth.js";
 import { UserSessionResponse, CallBusinessApiParams } from "./types.js";
+import { mockFetchUserSession, mockCallBusinessApi } from "./mock-data.js";
 
 /** HTTP请求超时 */
 const HTTP_TIMEOUT_MS = 15000;
@@ -18,6 +19,15 @@ const MAX_RETRIES_5XX = 2;
  */
 export async function fetchUserSession(userToken: string): Promise<UserSessionResponse> {
   const config = getConfig();
+
+  // Mock 模式
+  if (config.mockMode) {
+    logger.info("mcp-service", "fetchUserSession(mock)", "start", undefined, `user_token=${maskToken(userToken)}`);
+    const data = mockFetchUserSession(userToken);
+    logger.info("mcp-service", "fetchUserSession(mock)", "success", 0, `session_token=${maskToken(data.session_token)}`);
+    return data;
+  }
+
   const traceId = generateTraceId();
   const startTime = Date.now();
 
@@ -63,6 +73,15 @@ export async function fetchUserSession(userToken: string): Promise<UserSessionRe
  */
 export async function callBackendApi(params: CallBusinessApiParams): Promise<{ status: number; body: unknown }> {
   const config = getConfig();
+
+  // Mock 模式
+  if (config.mockMode) {
+    logger.info("mcp-service", "callBusinessApi(mock)", "start", undefined, `path=${params.api_path} method=${params.method}`);
+    const result = mockCallBusinessApi(params);
+    logger.info("mcp-service", "callBusinessApi(mock)", "success", 0, `path=${params.api_path} status=${result.status}`);
+    return result;
+  }
+
   const traceId = generateTraceId();
   const startTime = Date.now();
 

@@ -19,6 +19,8 @@ export interface AppConfig {
   serverPort: number;
   /** 日志级别 */
   logLevel: string;
+  /** Mock模式：不调用真实后端，返回模拟数据 */
+  mockMode: boolean;
 }
 
 function required(key: string): string {
@@ -37,18 +39,27 @@ function optionalInt(key: string, defaultValue: number): number {
   return num;
 }
 
+function optionalBool(key: string, defaultValue: boolean): boolean {
+  const value = process.env[key];
+  if (!value) return defaultValue;
+  return value === "true" || value === "1" || value === "yes";
+}
+
 let _config: AppConfig | null = null;
 
 export function loadConfig(): AppConfig {
+  const mockMode = optionalBool("MOCK_MODE", false);
+
   _config = {
-    apiPrefix: required("API_PREFIX"),
-    appId: required("APP_ID"),
-    appSecret: required("APP_SECRET"),
-    appTokenUrl: required("APP_TOKEN_URL"),
-    userSessionUrl: required("USER_SESSION_URL"),
+    apiPrefix: mockMode ? (process.env.API_PREFIX || "https://mock.midware.example.com") : required("API_PREFIX"),
+    appId: mockMode ? (process.env.APP_ID || "mock_app_id") : required("APP_ID"),
+    appSecret: mockMode ? (process.env.APP_SECRET || "mock_app_secret") : required("APP_SECRET"),
+    appTokenUrl: mockMode ? (process.env.APP_TOKEN_URL || "https://mock.midware.example.com/oauth/token") : required("APP_TOKEN_URL"),
+    userSessionUrl: mockMode ? (process.env.USER_SESSION_URL || "https://mock.midware.example.com/api/v1/user/session") : required("USER_SESSION_URL"),
     appTokenTtlSeconds: optionalInt("APP_TOKEN_TTL_SECONDS", 3600),
     serverPort: optionalInt("SERVER_PORT", 3000),
     logLevel: process.env.LOG_LEVEL || "info",
+    mockMode,
   };
   return _config;
 }

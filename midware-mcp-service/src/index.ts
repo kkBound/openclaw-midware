@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   initLogger(config.logLevel);
 
-  logger.info("mcp-service", "startup", "config_loaded", undefined, `port=${config.serverPort} apiPrefix=${config.apiPrefix}`);
+  logger.info("mcp-service", "startup", "config_loaded", undefined, `port=${config.serverPort} mockMode=${config.mockMode} apiPrefix=${config.apiPrefix}`);
 
   // 创建 Express 应用
   const app = express();
