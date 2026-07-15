@@ -19,7 +19,7 @@ export interface SessionCache {
   expires_at: number; // 过期时间戳（毫秒）
   user_token_hash: string; // user_token的SHA-256哈希
   accountGbId: string;
-  merchantId: string;
+  merchantId: number;
 }
 
 /** call_business_api 的请求参数 */

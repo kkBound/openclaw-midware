@@ -20,7 +20,7 @@ export interface UserSessionResult {
   session_token: string;
   expires_in: number;
   accountGbId: string;
-  merchantId: string;
+  merchantId: number;
 }
 
 export class McpServiceClient {

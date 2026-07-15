@@ -5,7 +5,7 @@
 import { getConfig } from "./config.js";
 import { logger, maskToken, generateTraceId } from "./logger.js";
 import { getAppToken } from "./auth.js";
-import { UserSessionResponse, CallBusinessApiParams } from "./types.js";
+import { UserSessionResponse, CallBusinessApiParams, ApiDoc } from "./types.js";
 import { mockFetchUserSession, mockCallBusinessApi } from "./mock-data.js";
 
 /** HTTP请求超时 */
@@ -45,8 +45,8 @@ export async function fetchUserSession(agentToken: string, jobNumber: string): P
         "Content-Type": "application/json",
         access_token: appToken,
         appId: config.appId,
-        "job-number": jobNumber,
         "X-Agent-Token": agentToken,
+        "X-Job-Number": jobNumber,
       },
       body: JSON.stringify({}),
       signal: controller.signal,
@@ -59,12 +59,49 @@ export async function fetchUserSession(agentToken: string, jobNumber: string): P
       throw new Error(`获取用户会话失败: ${response.status} ${response.statusText} ${errBody}`);
     }
 
-    const data = (await response.json()) as UserSessionResponse;
+    const raw = (await response.json()) as {
+      errcode?: number;
+      errMsg?: string;
+      data?: {
+        apiDoc?: string[]; // 后端字段名是 apiDoc（JSON 字符串数组）
+        sessionToken?: string;
+        expiresIn?: number;
+        accountGbId?: string;
+        merchantId?: number;
+      };
+    };
+
+    // 打印后端原始响应，便于排查 api_docs 为空的问题
+    logger.info("mcp-service", "fetchUserSession", "raw_response", undefined, `trace_id=${traceId} errcode=${raw.errcode} errMsg=${raw.errMsg} apiDoc_length=${raw.data?.apiDoc?.length ?? "undefined"} sessionToken=${raw.data?.sessionToken ? "exists" : "missing"} accountGbId=${raw.data?.accountGbId ?? "undefined"} merchantId=${raw.data?.merchantId ?? "undefined"}`);
+
+    // 检查业务错误
+    if (raw.errcode !== 0 || !raw.data) {
+      throw new Error(`获取用户会话业务错误: errcode=${raw.errcode} errMsg=${raw.errMsg}`);
+    }
+
+    // 解析 api_docs：后端返回的是 JSON 字符串数组，需逐项 parse
+    const apiDocs: ApiDoc[] = (raw.data.apiDoc || []).map((str, i) => {
+      try {
+        return JSON.parse(str) as ApiDoc;
+      } catch {
+        logger.warn("mcp-service", "fetchUserSession", "api_doc_parse_failed", undefined, `trace_id=${traceId} index=${i} raw_str=${str.substring(0, 200)}`);
+        return { name: `unknown_${i}`, description: "解析失败", method: "GET", path: "" };
+      }
+    });
+
+    // 映射字段名 camelCase → snake_case
+    const result: UserSessionResponse = {
+      api_docs: apiDocs,
+      session_token: raw.data.sessionToken || "",
+      expires_in: raw.data.expiresIn || 7200,
+      accountGbId: raw.data.accountGbId || "",
+      merchantId: raw.data.merchantId ?? 0,
+    };
 
     const duration = Date.now() - startTime;
-    logger.info("mcp-service", "fetchUserSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(data.session_token)} accountGbId=${data.accountGbId} merchantId=${data.merchantId}`);
+    logger.info("mcp-service", "fetchUserSession", "success", duration, `trace_id=${traceId} session_token=${maskToken(result.session_token)} api_docs_count=${apiDocs.length} accountGbId=${result.accountGbId} merchantId=${result.merchantId}`);
 
-    return data;
+    return result;
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     logger.error("mcp-service", "fetchUserSession", "failed", undefined, `trace_id=${traceId} error=${errMsg}`);
@@ -118,7 +155,9 @@ export async function callBackendApi(params: CallBusinessApiParams): Promise<{ s
         const queryString = queryParams && Object.keys(queryParams).length > 0
           ? "?" + new URLSearchParams(queryParams as Record<string, string>).toString()
           : "";
-        response = await fetch(`${url}${queryString}`, {
+        const fullUrl = `${url}${queryString}`;
+        logger.info("mcp-service", "callBusinessApi", "request", undefined, `trace_id=${traceId} method=${method} url=${fullUrl} headers=${JSON.stringify(baseHeaders)} query_params=${JSON.stringify(queryParams || {})}`);
+        response = await fetch(fullUrl, {
           method,
           headers: baseHeaders,
           signal: controller.signal,
@@ -126,10 +165,12 @@ export async function callBackendApi(params: CallBusinessApiParams): Promise<{ s
       } else {
         // POST/PUT: params作为JSON body
         baseHeaders["Content-Type"] = "application/json";
+        const bodyStr = queryParams ? JSON.stringify(queryParams) : undefined;
+        logger.info("mcp-service", "callBusinessApi", "request", undefined, `trace_id=${traceId} method=${method} url=${url} headers=${JSON.stringify(baseHeaders)} body=${bodyStr || "{}"}`);
         response = await fetch(url, {
           method,
           headers: baseHeaders,
-          body: queryParams ? JSON.stringify(queryParams) : undefined,
+          body: bodyStr,
           signal: controller.signal,
         });
       }

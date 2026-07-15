@@ -83,7 +83,7 @@ export function mockFetchUserSession(agentToken: string, jobNumber: string): Use
     session_token: sessionToken,
     expires_in: 1200,
     accountGbId: "acc_gb_001",
-    merchantId: "mch_001",
+    merchantId: 1,
   };
 
   // eslint-disable-next-line no-console

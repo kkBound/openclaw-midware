@@ -22,7 +22,7 @@ export interface UserSessionResponse {
   session_token: string;
   expires_in: number;
   accountGbId: string;
-  merchantId: string;
+  merchantId: number;
 }
 
 /** call_business_api 的请求参数 */

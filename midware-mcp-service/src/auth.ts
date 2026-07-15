@@ -75,7 +75,7 @@ async function fetchAppTokenFromBackend(): Promise<AppTokenCache> {
   const traceId = generateTraceId();
   const startTime = Date.now();
 
-  const body: Record<string, unknown> = { grant_type: "client_credentials" };
+  const body: Record<string, unknown> = {};
   const nonce = randomUUID();
   const sign = buildSignature(body, nonce);
 
@@ -122,26 +122,34 @@ async function fetchAppTokenFromBackend(): Promise<AppTokenCache> {
       }
 
       const data = await response.json() as {
-        access_token: string;
-        token_type?: string;
-        expires_in?: number;
+        errcode?: number;
+        errMsg?: string;
+        data?: {
+          token: string;
+          expireTime?: string;
+        };
       };
 
-      logger.debug("mcp-service", "fetchAppTokenFromBackend", "response_parsed", undefined, `trace_id=${traceId} has_token=${!!data.access_token} token_type=${data.token_type || "N/A"} expires_in=${data.expires_in || "N/A"}`);
+      logger.debug("mcp-service", "fetchAppTokenFromBackend", "response_parsed", undefined, `trace_id=${traceId} errcode=${data.errcode} errMsg=${data.errMsg} has_token=${!!data.data?.token}`);
 
-      if (!data.access_token) {
-        logger.error("mcp-service", "fetchAppTokenFromBackend", "missing_access_token", undefined, `trace_id=${traceId}`);
-        throw new Error("认证响应中缺少 access_token 字段");
+      if (data.errcode !== 0 || !data.data?.token) {
+        logger.error("mcp-service", "fetchAppTokenFromBackend", "business_error", undefined, `trace_id=${traceId} errcode=${data.errcode} errMsg=${data.errMsg}`);
+        throw new Error(`认证接口返回业务错误: errcode=${data.errcode} errMsg=${data.errMsg}`);
       }
 
-      const expiresIn = data.expires_in ?? config.appTokenTtlSeconds;
+      const token = data.data.token;
+      // expireTime 是毫秒时间戳字符串，如果不存在则用配置的默认TTL
+      const expiresAt = data.data.expireTime
+        ? parseInt(data.data.expireTime, 10)
+        : Date.now() + config.appTokenTtlSeconds * 1000;
+
       const cache: AppTokenCache = {
-        token: data.access_token,
-        expiresAt: Date.now() + expiresIn * 1000,
+        token: token,
+        expiresAt: expiresAt,
       };
 
       const duration = Date.now() - startTime;
-      logger.info("mcp-service", "fetchAppTokenFromBackend", "success", duration, `trace_id=${traceId} token=${maskToken(cache.token)} expires_in=${expiresIn}s expires_at=${new Date(cache.expiresAt).toISOString()}`);
+      logger.info("mcp-service", "fetchAppTokenFromBackend", "success", duration, `trace_id=${traceId} token=${maskToken(cache.token)} expires_at=${new Date(cache.expiresAt).toISOString()}`);
 
       return cache;
     } catch (error) {

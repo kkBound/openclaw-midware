@@ -148,22 +148,34 @@ export default definePluginEntry({
         name: "call_business_api",
         label: "Call Business API",
         description:
-          "根据session_token调用具体的业务接口，获取实际数据。需要先调用 get_user_docs_and_session 获取 session_token。根据接口文档(api_docs)选择要调用的接口。",
+          `根据session_token调用业务接口，获取实际数据。需要先调用 get_user_docs_and_session 获取 session_token 和 api_docs。
+
+**重要规则**：
+1. api_path 必须完全使用 get_user_docs_and_session 返回的 api_docs 中的 path 字段，禁止自行编造路径
+2. method 必须使用 api_docs 中的 method 字段，禁止自行指定
+3. params 中的参数名必须使用 api_docs 中 parameters 定义的字段名，禁止自行编造参数
+4. 如果 api_docs 中某个参数 required 为 true，则必须在 params 中提供该参数
+5. 调用前请对照 api_docs 确认 path、method、参数名完全匹配
+
+**调用示例**：
+假设 api_docs 返回:
+  - path: "/p/midware/api/V1.0/customers/jobNumber", method: "GET", parameters: { jobNumber: { type: "string", required: true } }
+则调用: api_path="/p/midware/api/V1.0/customers/jobNumber", method="GET", params={ "jobNumber": "WP09680" }`,
         parameters: Type.Object({
           session_token: Type.String({
             description: "通过 get_user_docs_and_session 获取的临时会话Token",
           }),
           api_path: Type.String({
-            description: "接口路径（不含前缀），如 /api/v1/orders",
+            description: "接口路径，必须从 api_docs 中对应接口的 path 字段原样复制，不可自行编造。例如 /p/midware/api/V1.0/customers/jobNumber",
           }),
           method: Type.Union(
             [Type.Literal("GET"), Type.Literal("POST"), Type.Literal("PUT"), Type.Literal("DELETE")]
           ),
           params: Type.Optional(
-            Type.Record(Type.String(), Type.Unknown())
+            Type.Record(Type.String(), Type.Unknown(), { description: "接口参数。GET请求时作为query参数，POST/PUT请求时作为JSON body。参数名和类型必须严格遵循 api_docs 中 parameters 的定义，required=true 的参数必须提供" })
           ),
           headers: Type.Optional(
-            Type.Record(Type.String(), Type.String())
+            Type.Record(Type.String(), Type.String(), { description: "额外请求头（可选，通常不需要）" })
           ),
         }),
         async execute(_toolCallId: string, params: unknown) {
